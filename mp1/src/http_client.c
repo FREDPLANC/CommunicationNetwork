@@ -119,13 +119,27 @@ int main(int argc, char *argv[]) {
     inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr), s, sizeof s);
     freeaddrinfo(servinfo);
 
+    int header_end_found = 0;
+    char *body_start = NULL;
+
     FILE *fp;
     fp = fopen("output", "w");
     while(1) {
         memset(recvingbuf, 0, sizeof(recvingbuf));
         if((numbytes = recv(sockfd, recvingbuf, MAXDATASIZE-1, 0)) > 0) {
-            fwrite(recvingbuf, 1, numbytes, fp);
-            printf("num in line: %d\n", numbytes);
+            printf("%s\n", recvingbuf);
+            if(!header_end_found){
+                body_start = strstr(recvingbuf, "\r\n\r\n");
+                if(body_start){
+                    body_start += 4;
+                    header_end_found = 1;
+                    fwrite(body_start, 1, numbytes - (body_start - recvingbuf), fp);
+                }
+            }
+            else{
+                fwrite(recvingbuf, 1, numbytes, fp);
+            }
+            
         } else {
             fclose(fp);
             break;

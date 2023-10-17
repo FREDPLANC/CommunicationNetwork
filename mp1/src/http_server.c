@@ -38,7 +38,7 @@ void *get_in_addr(struct sockaddr *sa)
 void send_file_content(int new_fd, const char *filename) {
     int filefd = open(filename, O_RDONLY);
     if (filefd == -1) {
-        char error_msg[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+        char error_msg[] = "HTTP/1.1 404 Not Found\r\n\r\n";
         send(new_fd, error_msg, sizeof(error_msg) - 1, 0);
         return;
     }
@@ -55,7 +55,7 @@ void send_file_content(int new_fd, const char *filename) {
     close(filefd);
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
 	int sockfd, new_fd;  // listen on sock_fd, new connection on new_fd
 	struct addrinfo hints, *servinfo, *p;
@@ -69,12 +69,17 @@ int main(void)
 	char recvingbuf[MAXDATASIZE];
 	char*recvbuf=recvingbuf;
 
+	if (argc != 2){
+		fprintf(stderr, "usage:server port\n");
+		exit(1);
+	}
+
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE; // use my IP
 
-	if ((rv = getaddrinfo(NULL, PORT, &hints, &servinfo)) != 0) {
+	if ((rv = getaddrinfo(NULL, argv[1], &hints, &servinfo)) != 0) {
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
 		return 1;
 	}
@@ -144,7 +149,11 @@ int main(void)
 			close(sockfd); // child doesn't need the listener
 
             recvsize = recv(new_fd, recvbuf, MAXDATASIZE - 1, 0);
+			printf("recvive %d\n", recvsize);
             recvbuf[recvsize] = '\0'; // Null terminate the received data
+			// for( int i = 0; i < recvsize; i++){
+			// 	printf("%c ", (unsigned char)recvbuf[i]);
+			// }
             printf("Received: %s\n", recvbuf);
 
             if (strncmp(recvbuf, "GET /", 5) == 0) {
@@ -152,7 +161,7 @@ int main(void)
                 sscanf(recvbuf, "GET /%s ", filename);
                 send_file_content(new_fd, filename);
             } else {
-                char response[] = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n";
+                char response[] = "HTTP/1.1 400 Bad Request\r\n\r\n";
                 send(new_fd, response, sizeof(response) - 1, 0);
             }
 
