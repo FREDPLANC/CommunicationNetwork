@@ -87,18 +87,24 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
         recv_bytes = recvfrom(s, &recv_pkt, sizeof(pkt), 0, (sockaddr*)&si_other, (socklen_t*)&slen);
         if ( recv_bytes < 0 )
             diep("recvfrom()");
+        cout << "Received packet type: " << recv_pkt.msg_type << ", seq_idx: " << recv_pkt.seq_idx << endl;
         if (recv_pkt.msg_type == DATA){
-           if (recv_pkt.seq_idx > ack_idx && buffer_q.size()< BUFFERR_RECVMAX ){ // future in line, push into the buffer queue
+            cout << "Processing DATA packet" << endl;
+            if (recv_pkt.seq_idx > ack_idx && buffer_q.size()< BUFFERR_RECVMAX ){ // future in line, push into the buffer queue
                 buffer_q.push(recv_pkt);
+                cout << "Pushed to buffer: seq_idx=" << recv_pkt.seq_idx << endl;
             }
             else if(recv_pkt.seq_idx == ack_idx){
                 fwrite(recv_pkt.data, sizeof(char), recv_pkt.data_size, fp);
                 ack_idx += recv_pkt.data_size;
+                cout << "Wrote to file: seq_idx=" << recv_pkt.seq_idx << ", ack_idx=" << ack_idx << endl;
                 /* Write packets that are at the top of the queue */
-                while (buffer_q.top().seq_idx == ack_idx && (!pqueue.empty())){
-                    fwrite(buffer_q.top().data, sizeof(char), buffer_q.top().data_size, fp);
-                    ack_idx += buffer_q.top().data_size;
+                while ((!buffer_q.empty()) && buffer_q.top().seq_idx == ack_idx ){
+                    pkt temp_pkt = buffer_q.top();
+                    fwrite(temp_pkt.data, sizeof(char), temp_pkt.data_size, fp);
+                    ack_idx += temp_pkt.data_size;
                     buffer_q.pop();
+                    cout << "Wrote buffered packet to file: seq_idx=" << temp_pkt.seq_idx << endl;
                 }
             }
             send_ack.ack_idx = ack_idx;
@@ -106,12 +112,14 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
             if(sendto(s, &send_ack, sizeof(pkt), 0, (sockaddr*)&si_other,  (socklen_t)sizeof(si_other)) <0){
                 diep("send ACK Failed");
             }
+            cout << "Sent ACK: ack_idx=" << ack_idx << endl;
         }else if (recv_pkt.msg_type == FIN){
             send_ack.ack_idx = ack_idx;
             send_ack.msg_type = FIN_ACK;
             if(sendto(s, &send_ack, sizeof(pkt), 0, (sockaddr*)&si_other, (socklen_t)sizeof(si_other)) <0){
                 diep("send FIN_ACK Failed");
             }
+            cout << "Sent FIN_ACK and breaking loop." << endl;
             break;
         }
     }
@@ -136,5 +144,6 @@ int main(int argc, char** argv) {
     udpPort = (unsigned short int) atoi(argv[1]);
 
     reliablyReceive(udpPort, argv[2]);
+    return (EXIT_SUCCESS);
 }
 

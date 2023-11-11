@@ -76,6 +76,7 @@ void diep(char *s) {
 }
 
 void send_new_pkt(pkt* packet){
+    cout << "Sending packet: seq_idx=" << packet->seq_idx << ", size=" << packet->data_size << endl;
     if (sendto(s, packet, sizeof(pkt), 0, (struct sockaddr*)&si_other, sizeof(si_other))== -1){
         diep("sendto()");
     }
@@ -107,15 +108,18 @@ void setSockTimeout(int s){
 void timeout_handler(){
     ssthresh = cwnd /2;
     cwnd = 1.0;
-    cout << "Time Out, restart " << endl;
+    cout << "Time Out, restart. ssthresh=" << ssthresh << ", cwnd=" << cwnd << endl;
     status = SLOW_START;
-
-    send_new_pkt(&wait_queue.front());
+    if (!wait_queue.empty()) {
+        cout << "Timeout: Resending packet: seq_idx=" << wait_queue.front().seq_idx << endl;
+        send_new_pkt(&wait_queue.front());
+    }
     rp_ack = 0;
 }
 
 /* Auto adjust the CWND  according to the condition of throughput of the newwork */
 void state_switch(){
+    cout << "State switch: Current status=" << status << ", cwnd=" << cwnd << ", ssthresh=" << ssthresh << ", rp_ack=" << rp_ack << endl;
     switch (status){
     case SLOW_START:
         if(rp_ack==0){
@@ -164,30 +168,40 @@ void state_switch(){
     default:
         break;
     }
+    cout << "Exiting state_switch. New status=" << status << ", cwnd=" << cwnd << ", ssthresh=" << ssthresh << ", rp_ack=" << rp_ack << endl;
 };
 
 void slide_window_send(FILE* fp){
-    if (bytes_sent == bytes_total) return;
+    cout << "Entering slide_window_send. bytes_sent=" << bytes_sent << ", bytes_total=" << bytes_total << endl;
+    if (bytes_sent == bytes_total){
+        cout << "All bytes have been sent." << endl;
+        return;
+    }
     char buf[MSS];
     memset(buf, 0, MSS);
     pkt packet;
     int bytes_rd;
+
     for( int i = 0; i < ceil(cwnd - wait_queue.size()); i++){ /* Here we assume that rwnd is infinitely large, therefore swnd=min(rwnd, cwnd)=cwnd*/
+        cout << "Slide window iteration " << i << ". cwnd=" << cwnd << ", queue size=" << wait_queue.size() << endl;
         int bytes_to_read = min(bytes_total-bytes_sent, int(MSS));
+        cout << "Reading " << bytes_to_read << " bytes from file." << endl;
         if((bytes_rd = fread(buf, sizeof(char), bytes_to_read, fp)) > 0){
+            cout << "Read " << bytes_rd << " bytes from file. Preparing packet with seq_idx=" << seq_idx << endl;
             packet.data_size = bytes_rd;
             if(bytes_to_read != bytes_rd) printf("read bytes not equal");
             packet.msg_type = DATA;
             packet.seq_idx = seq_idx;
             memcpy(packet.data, &buf, bytes_rd );
             wait_queue.push(packet);
+            cout << "Slide window: Preparing to send packet: seq_idx=" << seq_idx << ", bytes=" << bytes_rd << endl;
             send_new_pkt(&packet);
             seq_idx += bytes_rd;
             bytes_sent += bytes_rd;
         }
     
     }
-
+    cout << "Exiting slide_window_send. bytes_sent=" << bytes_sent << endl;
 }
 
 
@@ -225,24 +239,30 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
     pkt ack_packet;
     slide_window_send(fp);
     while(bytes_sent < bytes_total || pkt_acked < pkt_num_total){
+        cout << "Waiting for ACK. bytes_sent=" << bytes_sent << ", bytes_total=" << bytes_total << ", pkt_acked=" << pkt_acked << ", pkt_num_total=" << pkt_num_total << endl;
         if ((recvfrom(s, &ack_packet, sizeof(pkt), 0, NULL, NULL)) == -1){
             if (errno != EAGAIN || errno != EWOULDBLOCK) {
                 diep("recvfrom()");
             }
+            cout << "No ACK received, handling timeout." << endl;
             if (!wait_queue.empty()){
                 timeout_handler();
             }
         }
         else{
+            cout << "Received ACK: ack_idx=" << ack_packet.ack_idx << endl;
             if (ack_packet.msg_type == ACK){
                 if(ack_packet.ack_idx == wait_queue.front().seq_idx){
                     rp_ack++;
+                    cout << "ACK matches front of queue. rp_ack=" << rp_ack << endl;
                     state_switch();
                 }else if(ack_packet.ack_idx > wait_queue.front().seq_idx){
+                    cout << "ACK is greater than front of queue. Updating acked packets." << endl;
                     rp_ack = 0;
                     state_switch();
-                    int pop_num = ceil((ack_packet.ack_idx-wait_queue.front().seq_idx) * 1.0 / 1.0*MSS );
+                    int pop_num = ceil((ack_packet.ack_idx-wait_queue.front().seq_idx) * 1.0 / (1.0*MSS) );
                     pkt_acked += pop_num;
+                    cout << "Popping " << pop_num << " packets from queue." << endl;
                     while(pop_num-- >0){
                         wait_queue.pop();
                     }
