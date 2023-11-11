@@ -97,9 +97,9 @@ void setSockTimeout(int s){
     RTT_TO.tv_sec = 0;
     RTT_TO.tv_usec = TIMEOUT;
     if (setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &RTT_TO, sizeof(RTT_TO)) ==-1) {
-        fprintf(stderr, "Error setting socket timeout\n");
-        // diep("Error setting socket timeout\n");
-        return;
+        // fprintf(stderr, "Error setting socket timeout\n");
+        diep("Error setting socket timeout\n");
+        // return;
     }
 }
 
@@ -169,6 +169,7 @@ void state_switch(){
 void slide_window_send(FILE* fp){
     if (bytes_sent == bytes_total) return;
     char buf[MSS];
+    memset(buf, 0, MSS);
     pkt packet;
     int bytes_rd;
     for( int i = 0; i < ceil(cwnd - wait_queue.size()); i++){ /* Here we assume that rwnd is infinitely large, therefore swnd=min(rwnd, cwnd)=cwnd*/
@@ -238,14 +239,14 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
                     rp_ack++;
                     state_switch();
                 }else if(ack_packet.ack_idx > wait_queue.front().seq_idx){
+                    rp_ack = 0;
+                    state_switch();
                     int pop_num = ceil((ack_packet.ack_idx-wait_queue.front().seq_idx) * 1.0 / 1.0*MSS );
                     pkt_acked += pop_num;
-                    rp_ack = 0;
                     while(pop_num-- >0){
                         wait_queue.pop();
                     }
-                    slide_window_send(fp);
-                    state_switch();
+                    slide_window_send(fp);  
                 }
             }
         }

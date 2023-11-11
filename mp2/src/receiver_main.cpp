@@ -95,7 +95,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                 fwrite(recv_pkt.data, sizeof(char), recv_pkt.data_size, fp);
                 ack_idx += recv_pkt.data_size;
                 /* Write packets that are at the top of the queue */
-                while (buffer_q.top().seq_idx == ack_idx){
+                while (buffer_q.top().seq_idx == ack_idx && (!pqueue.empty())){
                     fwrite(buffer_q.top().data, sizeof(char), buffer_q.top().data_size, fp);
                     ack_idx += buffer_q.top().data_size;
                     buffer_q.pop();
